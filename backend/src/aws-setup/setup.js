@@ -7,7 +7,7 @@ const path = require('path');
 const archiver = require('archiver');
 const dotenv = require('dotenv');
 
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 const REGION = process.env.AWS_REGION || "eu-north-1";
 
@@ -59,6 +59,29 @@ async function setup() {
             console.log("⚠️ DynamoDB table already exists.");
         } else {
             console.error("❌ Error creating DynamoDB table:", err);
+        }
+    }
+
+    // 1.1 Create Dealers Table
+    const DEALERS_TABLE = "MargazDealers";
+    try {
+        console.log(`Creating DynamoDB table: ${DEALERS_TABLE}...`);
+        await dynamoClient.send(new CreateTableCommand({
+            TableName: DEALERS_TABLE,
+            KeySchema: [
+                { AttributeName: "id", KeyType: "HASH" }
+            ],
+            AttributeDefinitions: [
+                { AttributeName: "id", AttributeType: "S" }
+            ],
+            BillingMode: "PAY_PER_REQUEST"
+        }));
+        console.log("✅ Dealers table created.");
+    } catch (err) {
+        if (err.name === 'ResourceInUseException') {
+            console.log("⚠️ Dealers table already exists.");
+        } else {
+            console.error("❌ Error creating Dealers table:", err);
         }
     }
 

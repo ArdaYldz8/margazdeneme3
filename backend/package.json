@@ -11,9 +11,11 @@
   "description": "",
   "dependencies": {
     "@aws-sdk/client-apigatewayv2": "^3.940.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.940.0",
     "@aws-sdk/client-dynamodb": "^3.940.0",
     "@aws-sdk/client-iam": "^3.940.0",
     "@aws-sdk/client-lambda": "^3.942.0",
+    "@aws-sdk/lib-dynamodb": "^3.940.0",
     "@prisma/client": "^6.19.0",
     "@types/serialport": "^8.0.5",
     "archiver": "^7.0.1",

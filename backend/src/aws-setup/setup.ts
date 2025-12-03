@@ -157,13 +157,14 @@ async function setup() {
 
         // Add permission for API Gateway to invoke Lambda
         try {
+            const accountId = roleArn.split(':')[4];
             const { AddPermissionCommand } = require("@aws-sdk/client-lambda");
             await lambdaClient.send(new AddPermissionCommand({
                 FunctionName: FUNCTION_NAME,
-                StatementId: "apigateway-invoke",
+                StatementId: `apigateway-invoke-${apiId}`,
                 Action: "lambda:InvokeFunction",
                 Principal: "apigateway.amazonaws.com",
-                SourceArn: `arn:aws:execute-api:${REGION}:${process.env.AWS_ACCESS_KEY_ID?.startsWith('AKIA') ? '*' : '*'}:${apiId}/*/*`
+                SourceArn: `arn:aws:execute-api:${REGION}:${accountId}:${apiId}/*/*`
             }));
         } catch (e: any) {
             if (e.name !== 'ResourceConflictException') console.error("Warning adding permission:", e);

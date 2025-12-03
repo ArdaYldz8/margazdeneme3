@@ -36,7 +36,7 @@ router.post('/', async (req, res) => {
         // --- FORWARD TO AWS (Cloud Bridge) ---
         try {
             const axios = require('axios');
-            const AWS_URL = 'https://s75z9ee6mg.execute-api.eu-north-1.amazonaws.com/'; // Root endpoint for POST
+            const AWS_URL = 'https://mbgaykif87.execute-api.eu-north-1.amazonaws.com/'; // Root endpoint for POST
 
             console.log(`☁️ Forwarding to AWS: ${AWS_URL}`);
             await axios.post(AWS_URL, req.body);

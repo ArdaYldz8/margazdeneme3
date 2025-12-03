@@ -22,10 +22,12 @@ const limiter = rateLimit({
 app.use(limiter);
 
 import dealerRoutes from './routes/dealer.routes';
+import telemetryRoutes from './routes/telemetry.routes';
 
 // Routes
 app.use('/api/sync', syncRoutes);
 app.use('/api/dealers', dealerRoutes);
+app.use('/api/telemetry', telemetryRoutes);
 
 // Health Check
 app.get('/health', (req, res) => {

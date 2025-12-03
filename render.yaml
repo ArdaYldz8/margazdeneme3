@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: margaz-backend
+    env: node
+    root: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 18.x
+      - key: DATABASE_URL
+        sync: false

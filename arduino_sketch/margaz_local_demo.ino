@@ -2,59 +2,149 @@
 
 // --- Pin Definitions ---
 const int POT_PIN = A0;
-const int NEXTION_RX = 2;
-const int NEXTION_TX = 3;
+
+// Nextion: RX=2, TX=3 (Sadece Gonderme yapacagiz)
+SoftwareSerial nextion(2, 3); 
+
+// SIM900: RX=7, TX=8 (Hem Gonderme Hem Alma)
+SoftwareSerial sim900(7, 8);
 
 // --- Constants ---
-const int UPDATE_INTERVAL = 200; // Update every 200ms
-unsigned long lastUpdate = 0;
+const int UPDATE_INTERVAL = 300; // Ekran guncelleme hizi
+const unsigned long CLOUD_INTERVAL = 10000; // Buluta gonderme hizi (10 saniye)
 
-// --- Objects ---
-SoftwareSerial nextion(NEXTION_RX, NEXTION_TX); // RX, TX
+unsigned long lastUpdate = 0;
+unsigned long lastCloudTime = 0;
+int lastPercentage = -1;
+
+// AWS API URL (VPS Proxy Adresi - Port 3000)
+String apiUrl = "http://63.181.47.189:3000/api/telemetry";
 
 void setup() {
-  // Initialize USB Serial (for Backend)
+  // 1. USB Serial (Debug icin)
   Serial.begin(9600);
-  
-  // Initialize Nextion Serial
+  Serial.println("Sistem Baslatiliyor...");
+
+  // 2. Nextion Baslat
   nextion.begin(9600);
   
-  // Wait for stability
+  // 3. SIM900 Baslat
+  sim900.begin(9600);
+  sim900.listen(); // SIM900'u dinlemeye basla
+  
   delay(1000);
-  Serial.println("System Started");
+  
+  // GPRS Hazirlik
+  setupGPRS();
 }
 
 void loop() {
-  if (millis() - lastUpdate > UPDATE_INTERVAL) {
-    lastUpdate = millis();
+  unsigned long currentMillis = millis();
+
+  // --- 1. EKRAN GUNCELLEME ---
+  if (currentMillis - lastUpdate > UPDATE_INTERVAL) {
+    lastUpdate = currentMillis;
     
-    // 1. Read Potentiometer
     int sensorValue = analogRead(POT_PIN);
-    
-    // 2. Map to Percentage (0-100)
-    // Adjust 1023 if your pot doesn't reach full scale
     int percentage = map(sensorValue, 0, 1023, 0, 100);
-    percentage = constrain(percentage, 0, 100); // Ensure 0-100 range
+    percentage = constrain(percentage, 0, 100);
     
-    // 3. Send to Nextion Display (Progress Bar j0)
-    // Command format: "j0.val=50" followed by 3x 0xFF
-    nextion.print("j0.val=");
-    nextion.print(percentage);
-    nextion.write(0xff);
-    nextion.write(0xff);
-    nextion.write(0xff);
-    
-    // Optional: Update a text number field if you have one (e.g., n0)
-    // nextion.print("n0.val=");
-    // nextion.print(percentage);
-    // nextion.write(0xff);
-    // nextion.write(0xff);
-    // nextion.write(0xff);
-    
-    // 4. Send to Backend (USB Serial)
-    // Format: {"tankLevel": 50}
-    Serial.print("{\"tankLevel\": ");
-    Serial.print(percentage);
-    Serial.println("}");
+    if (percentage != lastPercentage) {
+      updateNextion(percentage);
+      lastPercentage = percentage;
+    }
+  }
+
+  // --- 2. BULUTA GONDERME ---
+  if (currentMillis - lastCloudTime > CLOUD_INTERVAL) {
+    lastCloudTime = currentMillis;
+    sendToCloud(lastPercentage);
+  }
+}
+
+void updateNextion(int val) {
+  String statusText = "";
+  if (val > lastPercentage) statusText = "Dolum %";
+  else if (val < lastPercentage) statusText = "Bosaltim %";
+  else statusText = "Seviye %";
+
+  // Bar Guncelle
+  nextion.print("j0.val=");
+  nextion.print(val);
+  nextion.write(0xff); nextion.write(0xff); nextion.write(0xff);
+  
+  // Yazi Guncelle
+  nextion.print("t0.txt=\"");
+  nextion.print(statusText);
+  nextion.print(val);
+  nextion.print("\"");
+  nextion.write(0xff); nextion.write(0xff); nextion.write(0xff);
+}
+
+void setupGPRS() {
+  Serial.println("GPRS Ayarlaniyor...");
+  
+  // Onceki oturumlari kapat
+  sendAT("AT+HTTPTERM", 2000);
+  sendAT("AT+SAPBR=0,1", 2000);
+
+  // Yeni baglanti
+  sendAT("AT+SAPBR=3,1,\"Contype\",\"GPRS\"", 1000);
+  sendAT("AT+SAPBR=3,1,\"APN\",\"internet\"", 1000);
+  
+  // DNS Komutlarini kaldirdim (Modul desteklemiyor)
+  
+  sendAT("AT+SAPBR=1,1", 3000); // Baglanti acmak surer
+  
+  // IP Adresini Kontrol Et
+  sendAT("AT+SAPBR=2,1", 1000);
+  
+  sendAT("AT+HTTPINIT", 1000);
+  sendAT("AT+HTTPSSL=0", 1000); // SSL KAPALI (HTTP deniyoruz)
+  sendAT("AT+HTTPPARA=\"CID\",1", 1000);
+  Serial.println("GPRS Hazir!");
+}
+
+void sendToCloud(int val) {
+  Serial.println("Buluta Gonderiliyor: " + String(val));
+  
+  String jsonData = "{\"device_id\":\"demo_unit\",\"tank_level\":" + String(val) + ",\"voltage\":12.5}";
+  
+  // URL Gonderimi (Buffer dolmasin diye okuyarak bekliyoruz)
+  sendAT("AT+HTTPPARA=\"URL\",\"" + apiUrl + "\"", 2000);
+
+  sendAT("AT+HTTPPARA=\"CONTENT\",\"application/json\"", 1000);
+  
+  // Veri Boyutu
+  sendAT("AT+HTTPDATA=" + String(jsonData.length()) + ",10000", 1000);
+  
+  // Veriyi Gonder
+  sim900.print(jsonData);
+  // Veri giderken de okuyalim
+  unsigned long start = millis();
+  while (millis() - start < 1000) {
+    while(sim900.available()) Serial.write(sim900.read());
+  }
+  
+  // POST Islemi
+  // Cevap (+HTTPACTION: 1,200,0) gelene kadar bekleyelim (Max 10sn)
+  sim900.println("AT+HTTPACTION=1");
+  start = millis();
+  while (millis() - start < 10000) {
+    while(sim900.available()) {
+      char c = sim900.read();
+      Serial.write(c);
+    }
+  }
+}
+
+// YENI FONKSIYON: Beklerken okuma yapar (Buffer tasma sorununu cozer)
+void sendAT(String command, unsigned long waitMs) {
+  sim900.println(command);
+  unsigned long start = millis();
+  while (millis() - start < waitMs) {
+    while(sim900.available()) {
+      Serial.write(sim900.read());
+    }
   }
 }
